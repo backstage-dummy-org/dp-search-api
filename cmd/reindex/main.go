@@ -2,18 +2,21 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/ONSdigital/dp-api-clients-go/v2/zebedee"
 	dpelasticsearch "github.com/ONSdigital/dp-elasticsearch/v2/elasticsearch"
 	"github.com/ONSdigital/dp-search-api/config"
 	"github.com/ONSdigital/dp-search-api/elasticsearch"
+	exporterModels "github.com/ONSdigital/dp-search-data-extractor/models"
+	importerModels "github.com/ONSdigital/dp-search-data-importer/models"
+	"github.com/ONSdigital/dp-search-data-importer/transform"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
-	"time"
-
-	"log"
 	"sync"
+	"time"
 )
 
 const zebedeeURI = "http://localhost:8082"
@@ -145,8 +148,24 @@ func docTransformer(extractedChan chan Document) chan Document {
 }
 
 func transformDoc(extractedDoc Document, transformedChan chan Document) {
-	body := []byte(fmt.Sprintf("{\"decription\": {\"title\":\"Transform some data from '%s'\"}}", extractedDoc.URI)) //TODO implement actual transform
-	//time.Sleep(time.Second)
+
+	//byte slice to Json & unMarshall Json
+	var zebedeeData exporterModels.ZebedeeData
+	err := json.Unmarshal(extractedDoc.Body, &zebedeeData)
+	if err != nil {
+		log.Fatal("error while attempting to unmarshal zebedee response into zebedeeData", err) //TODO proper error handling
+	}
+
+	exporterEventData := exporterModels.MapZebedeeDataToSearchDataImport(zebedeeData)
+	importerEventData := importerModels.SearchDataImportModel(exporterEventData)
+	esModel := transform.NewTransformer().TransformEventModelToEsModel(&importerEventData)
+
+	body, err := json.Marshal(esModel)
+	if err != nil {
+		log.Fatal("error marshal to json", err) //TODO error handling
+		return
+	}
+
 	transformedDoc := Document{
 		URI:  extractedDoc.URI,
 		Body: body,
