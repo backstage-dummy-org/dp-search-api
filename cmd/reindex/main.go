@@ -1,39 +1,42 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/ONSdigital/dp-api-clients-go/v2/zebedee"
-	dpelasticsearch "github.com/ONSdigital/dp-elasticsearch/v2/elasticsearch"
-	"github.com/ONSdigital/dp-search-api/config"
+	esauth "github.com/ONSdigital/dp-elasticsearch/v2/awsauth"
+	dphttp "github.com/ONSdigital/dp-net/http"
 	"github.com/ONSdigital/dp-search-api/elasticsearch"
 	exporterModels "github.com/ONSdigital/dp-search-data-extractor/models"
 	importerModels "github.com/ONSdigital/dp-search-data-importer/models"
 	"github.com/ONSdigital/dp-search-data-importer/transform"
+	es7 "github.com/elastic/go-elasticsearch/v7"
+	"github.com/elastic/go-elasticsearch/v7/esapi"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
+	"strings"
 	"sync"
 	"time"
 )
-
-const zebedeeURI = "http://localhost:8082"
 
 var (
 	maxConcurrentExtractions = 20
 	maxConcurrentIndexings   = 20
 )
 
+type cliConfig struct {
+	zebedeeURL   string
+	esURL        string
+	signRequests bool
+}
+
 type zebedeeClient interface {
 	GetPublishedIndex(ctx context.Context) (zebedee.PublishedIndex, error)
 	GetPublishedData(ctx context.Context, uriString string) ([]byte, error)
-}
-
-type elasticSearchClient interface {
-	CreateIndex(ctx context.Context, indexName string, indexSettings []byte) (int, error)
-	AddDocument(ctx context.Context, indexName, documentType, documentID string, document []byte) (int, error)
 }
 
 type Document struct {
@@ -41,28 +44,76 @@ type Document struct {
 	Body []byte
 }
 
-//type TransformedDoc struct {
-//	ID  string
-//	Body []byte
-//}
+type signingRoundTripper struct {
+	signer       *esauth.Signer
+	singRequests bool
+	rt           *http.RoundTripper
+}
 
-func main() {
-	ctx := context.Background()
-	cfg, err := config.Get()
-	if err != nil {
-		log.Fatal(ctx, "error retrieving config", err)
-		os.Exit(1)
+func (srt *signingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+
+	if srt.singRequests {
+		var body = []byte{}
+
+		if req.Body != nil {
+			bodyReader, _ := req.GetBody()
+			body, _ = ioutil.ReadAll(bodyReader)
+		}
+
+		if err := srt.signer.Sign(req, bytes.NewReader(body), time.Now()); err != nil {
+			return nil, err
+		}
 	}
 
-	zebClient := zebedee.New(zebedeeURI)
-	esClient := dpelasticsearch.NewClient(cfg.ElasticSearchAPIURL, cfg.SignElasticsearchRequests, 5)
+	return (*srt.rt).RoundTrip(req)
+}
 
-	urisChan := uriProducer(ctx, zebClient)
+func getElasticSearchClient(ctx context.Context, cliCfg cliConfig) *es7.Client {
+	var awsSDKSigner *esauth.Signer
+	if cliCfg.signRequests {
+		signer, err := esauth.NewAwsSigner("", "", "eu-west-1", "es")
+		if err != nil {
+			log.Fatal(ctx, "failed to create aws v4 signer", err)
+		}
+		awsSDKSigner = signer
+	}
+
+	srt := &signingRoundTripper{
+		signer:       awsSDKSigner,
+		singRequests: cliCfg.signRequests,
+		rt:           &dphttp.DefaultClient.HTTPClient.Transport,
+	}
+
+	es7Cli, err := es7.NewClient(es7.Config{
+		Addresses: []string{cliCfg.esURL},
+		Transport: srt,
+	})
+	if err != nil {
+		log.Fatal(ctx, "failed to create official ES client", err)
+	}
+	return es7Cli
+}
+
+func main() {
+	fmt.Printf("Hola %s!\n", Name)
+
+	ctx := context.Background()
+	cfg := getConfig(ctx)
+
+	zebClient := zebedee.New(cfg.zebedeeURL)
+	esClient := getElasticSearchClient(ctx, cfg)
+
+	//urisChan := uriProducer(ctx, zebClient)
+	urisChan := fakeUriProducer()
 	extractedChan, extractionFailuresChan := docExtractor(ctx, zebClient, urisChan, maxConcurrentExtractions)
 	transformedChan := docTransformer(extractedChan)
 	indexedChan := docIndexer(ctx, esClient, transformedChan, maxConcurrentIndexings)
 
 	summarize(indexedChan, extractionFailuresChan)
+
+	if promptUserToCleanIndices() {
+		cleanOldIndices(ctx, esClient)
+	}
 }
 
 func uriProducer(ctx context.Context, z zebedeeClient) chan string {
@@ -73,7 +124,25 @@ func uriProducer(ctx context.Context, z zebedeeClient) chan string {
 			for i := 0; i < 1; i++ {
 				uriChan <- uri
 			}
-			//fmt.Printf("Sending %s to channel\n", uri)
+		}
+		fmt.Println("Finished listing uris")
+	}()
+	return uriChan
+}
+
+func fakeUriProducer() chan string {
+	uriChan := make(chan string)
+	go func() {
+		defer close(uriChan)
+
+		urisToIndex := []string{
+			"/peoplepopulationandcommunity/housing/articles/housepricestatisticsforsmallareasinenglandandwales/2015-02-17",
+		}
+
+		for _, uri := range urisToIndex {
+			for i := 0; i < 1; i++ {
+				uriChan <- uri
+			}
 		}
 		fmt.Println("Finished listing uris")
 	}()
@@ -173,19 +242,33 @@ func transformDoc(extractedDoc Document, transformedChan chan Document) {
 	transformedChan <- transformedDoc
 }
 
-func docIndexer(ctx context.Context, es elasticSearchClient, transformedChan chan Document, maxIndexings int) chan bool {
+func docIndexer(ctx context.Context, es7client *es7.Client, transformedChan chan Document, maxIndexings int) chan bool {
 	indexedChan := make(chan bool)
 	go func() {
 		defer close(indexedChan)
 
 		indexName := createIndexName("ons")
 		fmt.Printf("Index created: %s\n", indexName)
-		status, err := es.CreateIndex(ctx, indexName, elasticsearch.GetSearchIndexSettings())
+
+		// Create the "ons" index with correct mappings
+		//
+		res, err := es7client.Indices.Exists([]string{indexName})
 		if err != nil {
-			log.Fatal(ctx, "error creating index", err)
+			log.Fatalf("Error: Indices.Exists: %s", err)
 		}
-		if status != http.StatusOK {
-			log.Fatal(ctx, "error creating index http status - ", status)
+		res.Body.Close()
+		if res.StatusCode == 404 {
+			res, err := es7client.Indices.Create(
+				indexName,
+				es7client.Indices.Create.WithBody(bytes.NewReader(elasticsearch.GetSearchIndexSettings())),
+				es7client.Indices.Create.WithWaitForActiveShards("1"),
+			)
+			if err != nil {
+				log.Fatalf("Error: Indices.Create: %s", err)
+			}
+			if res.IsError() {
+				log.Fatalf("Error: Indices.Create: %s", res)
+			}
 		}
 
 		var wg sync.WaitGroup
@@ -194,11 +277,13 @@ func docIndexer(ctx context.Context, es elasticSearchClient, transformedChan cha
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				indexDoc(ctx, es, transformedChan, indexedChan, indexName)
+				indexDoc(ctx, es7client, transformedChan, indexedChan, indexName)
 			}()
 		}
 		wg.Wait()
 		fmt.Println("Finished indexing docs")
+
+		swapAliases(ctx, es7client, indexName)
 	}()
 	return indexedChan
 }
@@ -208,17 +293,48 @@ func createIndexName(s string) string {
 	return fmt.Sprintf("%s%d", s, now.UnixMicro())
 }
 
-func indexDoc(ctx context.Context, es elasticSearchClient, transformedChan chan Document, indexedChan chan bool, indexName string) {
+func indexDoc(ctx context.Context, es7client *es7.Client, transformedChan chan Document, indexedChan chan bool, indexName string) {
 	for transformedDoc := range transformedChan {
 
 		id := url.PathEscape(transformedDoc.URI) //TODO this isn't right, the client should url-escape the id
 		indexed := true
-		status, err := es.AddDocument(ctx, indexName, "_create", id, transformedDoc.Body)
-		if err != nil || status != http.StatusCreated {
+
+		req := esapi.IndexRequest{
+			Index:      indexName,
+			DocumentID: id,
+			Body:       bytes.NewReader(transformedDoc.Body),
+			Refresh:    "true",
+		}
+		res, err := req.Do(ctx, es7client)
+		if err != nil || res.StatusCode != http.StatusCreated {
 			indexed = false
 		}
+		defer res.Body.Close()
 
 		indexedChan <- indexed
+	}
+}
+
+func swapAliases(ctx context.Context, es7client *es7.Client, indexName string) {
+	update := fmt.Sprintf(`{
+		"actions": [
+			{
+				"remove": {
+					"index": "ons*",
+					"alias": "ons"
+				}
+			},
+			{
+				"add": {
+					"index": "%s",
+					"alias": "ons"
+				}
+			}
+		]
+	}`, indexName)
+	res, err := es7client.Indices.UpdateAliases(strings.NewReader(update))
+	if err != nil {
+		log.Fatalf("Error: Indices.UpdateAliases: %s", res)
 	}
 }
 
@@ -236,4 +352,51 @@ func summarize(indexedChan chan bool, extractionFailuresChan chan string) {
 	}
 
 	fmt.Printf("Indexed: %d, Failed: %d\n", totalIndexed, totalFailed)
+}
+
+func promptUserToCleanIndices() bool {
+	//TODO prompt
+	return true
+}
+
+type aliasResponse map[string]indexDetails
+
+type indexDetails struct {
+	Aliases map[string]interface{} `json:"aliases"`
+}
+
+func cleanOldIndices(ctx context.Context, es *es7.Client) {
+	res, err := es.Indices.GetAlias()
+	if err != nil {
+		log.Fatalf("Error: Indices.GetAlias: %s", res)
+	}
+	var r aliasResponse
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		log.Fatalf("Error parsing the response body: %s", err)
+	}
+
+	toDelete := []string{}
+	for index, details := range r {
+		if strings.HasPrefix(index, "ons") && !doesIndexHaveAlias(details, "ons") {
+			toDelete = append(toDelete, index)
+		}
+	}
+	deleteIndicies(ctx, es, toDelete)
+}
+
+func doesIndexHaveAlias(details indexDetails, alias string) bool {
+	for k, _ := range details.Aliases {
+		if k == alias {
+			return true
+		}
+	}
+	return false
+}
+
+func deleteIndicies(ctx context.Context, es *es7.Client, indicies []string) {
+	res, err := es.Indices.Delete(indicies)
+	if err != nil {
+		log.Fatalf("Error: Indices.GetAlias: %s", res)
+	}
+	fmt.Printf("Deleted Indicies: %s\n", strings.Join(indicies, ","))
 }
