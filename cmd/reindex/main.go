@@ -9,7 +9,7 @@ import (
 	esauth "github.com/ONSdigital/dp-elasticsearch/v2/awsauth"
 	dphttp "github.com/ONSdigital/dp-net/http"
 	"github.com/ONSdigital/dp-search-api/elasticsearch"
-	exporterModels "github.com/ONSdigital/dp-search-data-extractor/models"
+	extractorModels "github.com/ONSdigital/dp-search-data-extractor/models"
 	importerModels "github.com/ONSdigital/dp-search-data-importer/models"
 	"github.com/ONSdigital/dp-search-data-importer/transform"
 	es7 "github.com/elastic/go-elasticsearch/v7"
@@ -35,7 +35,7 @@ type cliConfig struct {
 }
 
 type zebedeeClient interface {
-	GetPublishedIndex(ctx context.Context) (zebedee.PublishedIndex, error)
+	GetPublishedIndex(ctx context.Context, piRequest *zebedee.PublishedIndexRequestParams) (zebedee.PublishedIndex, error)
 	GetPublishedData(ctx context.Context, uriString string) ([]byte, error)
 }
 
@@ -103,8 +103,8 @@ func main() {
 	zebClient := zebedee.New(cfg.zebedeeURL)
 	esClient := getElasticSearchClient(ctx, cfg)
 
-	//urisChan := uriProducer(ctx, zebClient)
-	urisChan := fakeUriProducer()
+	urisChan := uriProducer(ctx, zebClient)
+	//urisChan := fakeUriProducer()
 	extractedChan, extractionFailuresChan := docExtractor(ctx, zebClient, urisChan, maxConcurrentExtractions)
 	transformedChan := docTransformer(extractedChan)
 	indexedChan := docIndexer(ctx, esClient, transformedChan, maxConcurrentIndexings)
@@ -120,9 +120,9 @@ func uriProducer(ctx context.Context, z zebedeeClient) chan string {
 	uriChan := make(chan string)
 	go func() {
 		defer close(uriChan)
-		for _, uri := range getPublishedURIs(ctx, z) {
+		for _, item := range getPublishedURIs(ctx, z) {
 			for i := 0; i < 1; i++ {
-				uriChan <- uri
+				uriChan <- item.URI
 			}
 		}
 		fmt.Println("Finished listing uris")
@@ -149,14 +149,14 @@ func fakeUriProducer() chan string {
 	return uriChan
 }
 
-func getPublishedURIs(ctx context.Context, z zebedeeClient) []string {
-	index, err := z.GetPublishedIndex(ctx)
+func getPublishedURIs(ctx context.Context, z zebedeeClient) []zebedee.PublishedIndexItem {
+	index, err := z.GetPublishedIndex(ctx, &zebedee.PublishedIndexRequestParams{})
 	if err != nil {
 		//TODO error handling
 		log.Fatalf("Fatal error getting index from zebedee: %s", err)
 	}
-	fmt.Printf("Fetched %d uris from zebedee\n", len(index.URIs))
-	return index.URIs
+	fmt.Printf("Fetched %d uris from zebedee\n", index.Count)
+	return index.Items
 }
 
 func docExtractor(ctx context.Context, z zebedeeClient, uriChan chan string, maxExtractions int) (chan Document, chan string) {
@@ -219,13 +219,13 @@ func docTransformer(extractedChan chan Document) chan Document {
 func transformDoc(extractedDoc Document, transformedChan chan Document) {
 
 	//byte slice to Json & unMarshall Json
-	var zebedeeData exporterModels.ZebedeeData
+	var zebedeeData extractorModels.ZebedeeData
 	err := json.Unmarshal(extractedDoc.Body, &zebedeeData)
 	if err != nil {
 		log.Fatal("error while attempting to unmarshal zebedee response into zebedeeData", err) //TODO proper error handling
 	}
 
-	exporterEventData := exporterModels.MapZebedeeDataToSearchDataImport(zebedeeData)
+	exporterEventData := extractorModels.MapZebedeeDataToSearchDataImport(zebedeeData, -1)
 	importerEventData := importerModels.SearchDataImportModel(exporterEventData)
 	esModel := transform.NewTransformer().TransformEventModelToEsModel(&importerEventData)
 
