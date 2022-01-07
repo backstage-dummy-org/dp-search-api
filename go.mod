@@ -11,6 +11,7 @@ require (
 	github.com/ONSdigital/dp-elasticsearch/v2 v2.3.0
 	github.com/ONSdigital/dp-healthcheck v1.2.1
 	github.com/ONSdigital/dp-net v1.2.0
+	github.com/ONSdigital/dp-net/v2 v2.2.0-beta
 	github.com/ONSdigital/dp-search-data-extractor v0.5.0
 	github.com/ONSdigital/dp-search-data-importer v0.3.0
 	github.com/ONSdigital/log.go/v2 v2.0.9
@@ -68,3 +69,5 @@ require (
 	golang.org/x/text v0.3.7 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
+
+replace github.com/ONSdigital/dp-net/v2 => ../libraries/dp-net

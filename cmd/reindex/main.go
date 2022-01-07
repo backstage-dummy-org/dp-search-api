@@ -6,15 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/ONSdigital/dp-api-clients-go/v2/zebedee"
-	esauth "github.com/ONSdigital/dp-elasticsearch/v2/awsauth"
-	dphttp "github.com/ONSdigital/dp-net/http"
+	dphttp2 "github.com/ONSdigital/dp-net/v2/http"
 	"github.com/ONSdigital/dp-search-api/elasticsearch"
 	extractorModels "github.com/ONSdigital/dp-search-data-extractor/models"
 	importerModels "github.com/ONSdigital/dp-search-data-importer/models"
 	"github.com/ONSdigital/dp-search-data-importer/transform"
 	es7 "github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -44,49 +42,10 @@ type Document struct {
 	Body []byte
 }
 
-type signingRoundTripper struct {
-	signer       *esauth.Signer
-	singRequests bool
-	rt           *http.RoundTripper
-}
-
-func (srt *signingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-
-	if srt.singRequests {
-		var body = []byte{}
-
-		if req.Body != nil {
-			bodyReader, _ := req.GetBody()
-			body, _ = ioutil.ReadAll(bodyReader)
-		}
-
-		if err := srt.signer.Sign(req, bytes.NewReader(body), time.Now()); err != nil {
-			return nil, err
-		}
-	}
-
-	return (*srt.rt).RoundTrip(req)
-}
-
-func getElasticSearchClient(ctx context.Context, cliCfg cliConfig) *es7.Client {
-	var awsSDKSigner *esauth.Signer
-	if cliCfg.signRequests {
-		signer, err := esauth.NewAwsSigner("", "", "eu-west-1", "es")
-		if err != nil {
-			log.Fatal(ctx, "failed to create aws v4 signer", err)
-		}
-		awsSDKSigner = signer
-	}
-
-	srt := &signingRoundTripper{
-		signer:       awsSDKSigner,
-		singRequests: cliCfg.signRequests,
-		rt:           &dphttp.DefaultClient.HTTPClient.Transport,
-	}
-
+func getElasticSearchClient(ctx context.Context, cliCfg cliConfig, httpClient dphttp2.Clienter) *es7.Client {
 	es7Cli, err := es7.NewClient(es7.Config{
 		Addresses: []string{cliCfg.esURL},
-		Transport: srt,
+		Transport: httpClient,
 	})
 	if err != nil {
 		log.Fatal(ctx, "failed to create official ES client", err)
@@ -100,14 +59,20 @@ func main() {
 	ctx := context.Background()
 	cfg := getConfig(ctx)
 
-	hcClienter := dphttp.NewClient()
+	hcClienter := dphttp2.NewClient()
 	hcClienter.SetMaxRetries(2)
 	hcClienter.SetTimeout(30 * time.Second) // Published Index takes about 10s to return so add a bit more
 	zebClient := zebedee.NewClientWithClienter(cfg.zebedeeURL, hcClienter)
-	esClient := getElasticSearchClient(ctx, cfg)
 
-	urisChan := uriProducer(ctx, zebClient, 1000)
-	//urisChan := fakeUriProducer()
+	esHttpClient := hcClienter
+	if cfg.signRequests {
+		fmt.Println("Use a signing roundtripper client")
+		esHttpClient = dphttp2.NewClientWithAwsSigner("", "", "eu-west-1", "es")
+	}
+	esClient := getElasticSearchClient(ctx, cfg, esHttpClient)
+
+	//urisChan := uriProducer(ctx, zebClient, 1000)
+	urisChan := fakeUriProducer()
 	extractedChan, extractionFailuresChan := docExtractor(ctx, zebClient, urisChan, maxConcurrentExtractions)
 	transformedChan := docTransformer(extractedChan)
 	indexedChan := docIndexer(ctx, esClient, transformedChan, maxConcurrentIndexings)
@@ -312,6 +277,7 @@ func indexDoc(ctx context.Context, es7client *es7.Client, transformedChan chan D
 		}
 		res, err := req.Do(ctx, es7client)
 		if err != nil || res.StatusCode != http.StatusCreated {
+
 			indexed = false
 		}
 		defer res.Body.Close()
@@ -375,6 +341,7 @@ func cleanOldIndices(ctx context.Context, es *es7.Client) {
 	if err != nil {
 		log.Fatalf("Error: Indices.GetAlias: %s", res)
 	}
+	fmt.Printf("GetAliasResponse:%v\n", res)
 	var r aliasResponse
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
 		log.Fatalf("Error parsing the response body: %s", err)
