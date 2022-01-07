@@ -100,10 +100,13 @@ func main() {
 	ctx := context.Background()
 	cfg := getConfig(ctx)
 
-	zebClient := zebedee.New(cfg.zebedeeURL)
+	hcClienter := dphttp.NewClient()
+	hcClienter.SetMaxRetries(2)
+	hcClienter.SetTimeout(30 * time.Second) // Published Index takes about 10s to return so add a bit more
+	zebClient := zebedee.NewClientWithClienter(cfg.zebedeeURL, hcClienter)
 	esClient := getElasticSearchClient(ctx, cfg)
 
-	urisChan := uriProducer(ctx, zebClient)
+	urisChan := uriProducer(ctx, zebClient, 1000)
 	//urisChan := fakeUriProducer()
 	extractedChan, extractionFailuresChan := docExtractor(ctx, zebClient, urisChan, maxConcurrentExtractions)
 	transformedChan := docTransformer(extractedChan)
@@ -116,14 +119,16 @@ func main() {
 	}
 }
 
-func uriProducer(ctx context.Context, z zebedeeClient) chan string {
+func uriProducer(ctx context.Context, z zebedeeClient, limit int) chan string {
 	uriChan := make(chan string)
 	go func() {
 		defer close(uriChan)
-		for _, item := range getPublishedURIs(ctx, z) {
-			for i := 0; i < 1; i++ {
-				uriChan <- item.URI
-			}
+		items := getPublishedURIs(ctx, z)
+		if len(items) > limit {
+			items = items[:limit]
+		}
+		for _, item := range items {
+			uriChan <- item.URI
 		}
 		fmt.Println("Finished listing uris")
 	}()
