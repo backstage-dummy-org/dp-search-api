@@ -67,12 +67,16 @@ func main() {
 	esHttpClient := hcClienter
 	if cfg.signRequests {
 		fmt.Println("Use a signing roundtripper client")
-		esHttpClient = dphttp2.NewClientWithAwsSigner("", "", "eu-west-1", "es")
+		signingHttpClient, err := dphttp2.NewClientWithAwsSigner("", "", "eu-west-1", "es")
+		if err != nil {
+			log.Fatal(ctx, "Failed to create http signer", err)
+		}
+		esHttpClient = signingHttpClient
 	}
 	esClient := getElasticSearchClient(ctx, cfg, esHttpClient)
 
-	//urisChan := uriProducer(ctx, zebClient, 1000)
-	urisChan := fakeUriProducer()
+	urisChan := uriProducer(ctx, zebClient, 1000)
+	//urisChan := fakeUriProducer()
 	extractedChan, extractionFailuresChan := docExtractor(ctx, zebClient, urisChan, maxConcurrentExtractions)
 	transformedChan := docTransformer(extractedChan)
 	indexedChan := docIndexer(ctx, esClient, transformedChan, maxConcurrentIndexings)
@@ -341,7 +345,7 @@ func cleanOldIndices(ctx context.Context, es *es7.Client) {
 	if err != nil {
 		log.Fatalf("Error: Indices.GetAlias: %s", res)
 	}
-	fmt.Printf("GetAliasResponse:%v\n", res)
+	//fmt.Printf("GetAliasResponse:%v\n", res)
 	var r aliasResponse
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
 		log.Fatalf("Error parsing the response body: %s", err)
