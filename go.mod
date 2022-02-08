@@ -2,21 +2,22 @@ module github.com/ONSdigital/dp-search-api
 
 go 1.17
 
-replace github.com/coreos/etcd => github.com/coreos/etcd v3.3.24+incompatible
+//replace github.com/coreos/etcd => github.com/coreos/etcd v3.3.24+incompatible
 
 require (
 	github.com/ONSdigital/dp-api-clients-go/v2 v2.5.0
 	github.com/ONSdigital/dp-authorisation v0.2.0
 	github.com/ONSdigital/dp-component-test v0.6.3
 	github.com/ONSdigital/dp-elasticsearch/v2 v2.3.0
-	github.com/ONSdigital/dp-healthcheck v1.2.1
-	github.com/ONSdigital/dp-net v1.2.0
+	github.com/ONSdigital/dp-elasticsearch/v3 v3.0.0-alpha
+	github.com/ONSdigital/dp-healthcheck v1.2.3
+	github.com/ONSdigital/dp-net v1.4.0
 	github.com/ONSdigital/dp-net/v2 v2.2.0-beta
 	github.com/ONSdigital/dp-search-data-extractor v0.5.0
 	github.com/ONSdigital/dp-search-data-importer v0.3.0
 	github.com/ONSdigital/log.go/v2 v2.0.9
 	github.com/cucumber/godog v0.12.2
-	github.com/elastic/go-elasticsearch/v7 v7.10.0
+	github.com/elastic/go-elasticsearch/v7 v7.16.0
 	github.com/google/go-cmp v0.5.6
 	github.com/gorilla/mux v1.8.0
 	github.com/kelseyhightower/envconfig v1.4.0
@@ -31,7 +32,7 @@ require (
 	github.com/ONSdigital/dp-mongodb-in-memory v1.1.0 // indirect
 	github.com/ONSdigital/dp-rchttp v1.0.0 // indirect
 	github.com/ONSdigital/go-ns v0.0.0-20200205115900-a11716f93bad // indirect
-	github.com/aws/aws-sdk-go v1.38.45 // indirect
+	github.com/aws/aws-sdk-go v1.42.30 // indirect
 	github.com/cucumber/gherkin-go/v19 v19.0.3 // indirect
 	github.com/cucumber/messages-go/v16 v16.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -63,11 +64,14 @@ require (
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
 	go.mongodb.org/mongo-driver v1.8.0 // indirect
 	golang.org/x/crypto v0.0.0-20211117183948-ae814b36b871 // indirect
-	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2 // indirect
+	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.0.0-20211124211545-fe61309f8881 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
 
-replace github.com/ONSdigital/dp-net/v2 => ../libraries/dp-net
+replace (
+	github.com/ONSdigital/dp-elasticsearch/v3 => ../libraries/dp-elasticsearch
+	github.com/ONSdigital/dp-net/v2 => ../libraries/dp-net
+)
