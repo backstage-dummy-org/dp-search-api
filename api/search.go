@@ -2,20 +2,28 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
+	"github.com/ONSdigital/dp-search-api/elasticsearch"
 	"github.com/ONSdigital/log.go/v2/log"
 	"github.com/pkg/errors"
 )
 
-const defaultContentTypes string = "bulletin," +
-	"article," +
+const defaultContentTypes string = "article," +
 	"article_download," +
+	"bulletin," +
 	"compendium_landing_page," +
+	"compendium_chapter," +
+	"compendium_data," +
+	"dataset," +
 	"dataset_landing_page," +
+	"product_page," +
 	"reference_tables," +
+	"release," +
 	"static_adhoc," +
 	"static_article," +
 	"static_foi," +
@@ -24,7 +32,14 @@ const defaultContentTypes string = "bulletin," +
 	"static_methodology_download," +
 	"static_page," +
 	"static_qmi," +
-	"timeseries"
+	"timeseries," +
+	"timeseries_dataset"
+
+var serverErrorMessage = "internal server error"
+
+type CreateIndexResponse struct {
+	IndexName string
+}
 
 func paramGet(params url.Values, key, defaultValue string) string {
 	value := params.Get(key)
@@ -107,7 +122,7 @@ func SearchHandlerFunc(queryBuilder QueryBuilder, elasticSearchClient ElasticSea
 			return
 		}
 
-		if !json.Valid([]byte(responseData)) {
+		if !json.Valid(responseData) {
 			log.Error(ctx, "elastic search returned invalid JSON for search query", errors.New("elastic search returned invalid JSON for search query"))
 			http.Error(w, "Failed to process search query", http.StatusInternalServerError)
 			return
@@ -129,6 +144,48 @@ func SearchHandlerFunc(queryBuilder QueryBuilder, elasticSearchClient ElasticSea
 			http.Error(w, "Failed to write http response", http.StatusInternalServerError)
 			return
 		}
-
 	}
+}
+
+func (a SearchAPI) CreateSearchIndexHandlerFunc(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	indexName := createIndexName("ons")
+	fmt.Printf("Index created: %s\n", indexName)
+	indexCreated := true
+
+	status, err := a.dpESClient.CreateIndex(ctx, indexName, elasticsearch.GetSearchIndexSettings())
+	if err != nil {
+		log.Error(ctx, "error creating index", err, log.Data{"response_status": status, "index_name": indexName})
+		indexCreated = false
+	}
+
+	if status != http.StatusOK {
+		log.Error(ctx, "unexpected http status when creating index", err, log.Data{"response_status": status, "index_name": indexName})
+		indexCreated = false
+	}
+
+	if !indexCreated {
+		if err != nil {
+			log.Error(ctx, "creating index failed with this error", err)
+		}
+		http.Error(w, serverErrorMessage, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	createIndexResponse := CreateIndexResponse{IndexName: indexName}
+	jsonResponse, _ := json.Marshal(createIndexResponse)
+
+	_, err = w.Write(jsonResponse)
+	if err != nil {
+		log.Error(ctx, "writing response failed", err)
+		http.Error(w, serverErrorMessage, http.StatusInternalServerError)
+		return
+	}
+}
+
+func createIndexName(s string) string {
+	now := time.Now()
+	return fmt.Sprintf("%s%d", s, now.UnixMicro())
 }

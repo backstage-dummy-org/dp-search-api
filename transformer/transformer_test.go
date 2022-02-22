@@ -3,7 +3,7 @@ package transformer
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -13,11 +13,11 @@ func TestTransform(t *testing.T) {
 	Convey("Transforms unmarshalled search responses successfully", t, func() {
 		transformer := New()
 		Convey("Zero suggestions creates empty array", func() {
-			es := esResponse{
-				Responses: []esResponseItem{esResponseItem{
-					Suggest: esSuggest{
-						SearchSuggest: []esSearchSuggest{esSearchSuggest{
-							Options: []esSearchSuggestOptions{},
+			es := ESResponse{
+				Responses: []ESResponseItem{ESResponseItem{
+					Suggest: ESSuggest{
+						SearchSuggest: []ESSearchSuggest{ESSearchSuggest{
+							Options: []ESSearchSuggestOptions{},
 						}},
 					},
 				}},
@@ -27,12 +27,12 @@ func TestTransform(t *testing.T) {
 		})
 
 		Convey("One suggestion creates a populated array", func() {
-			es := esResponse{
-				Responses: []esResponseItem{esResponseItem{
-					Suggest: esSuggest{
-						SearchSuggest: []esSearchSuggest{esSearchSuggest{
-							Options: []esSearchSuggestOptions{
-								esSearchSuggestOptions{Text: "option1"},
+			es := ESResponse{
+				Responses: []ESResponseItem{ESResponseItem{
+					Suggest: ESSuggest{
+						SearchSuggest: []ESSearchSuggest{ESSearchSuggest{
+							Options: []ESSearchSuggestOptions{
+								ESSearchSuggestOptions{Text: "option1"},
 							},
 						}},
 					},
@@ -44,23 +44,23 @@ func TestTransform(t *testing.T) {
 			So(sr.Suggestions[0], ShouldResemble, "option1")
 		})
 		Convey("Multiple suggestions creates a populated array incorrect order", func() {
-			es := esResponse{
-				Responses: []esResponseItem{esResponseItem{
-					Suggest: esSuggest{
-						SearchSuggest: []esSearchSuggest{
-							esSearchSuggest{
-								Options: []esSearchSuggestOptions{
-									esSearchSuggestOptions{Text: "option1"},
+			es := ESResponse{
+				Responses: []ESResponseItem{ESResponseItem{
+					Suggest: ESSuggest{
+						SearchSuggest: []ESSearchSuggest{
+							ESSearchSuggest{
+								Options: []ESSearchSuggestOptions{
+									ESSearchSuggestOptions{Text: "option1"},
 								},
 							},
-							esSearchSuggest{
-								Options: []esSearchSuggestOptions{
-									esSearchSuggestOptions{Text: "option2"},
+							ESSearchSuggest{
+								Options: []ESSearchSuggestOptions{
+									ESSearchSuggestOptions{Text: "option2"},
 								},
 							},
-							esSearchSuggest{
-								Options: []esSearchSuggestOptions{
-									esSearchSuggestOptions{Text: "option3"},
+							ESSearchSuggest{
+								Options: []ESSearchSuggestOptions{
+									ESSearchSuggestOptions{Text: "option3"},
 								},
 							},
 						},
@@ -79,7 +79,6 @@ func TestTransform(t *testing.T) {
 
 func TestBuildAdditionalSuggestionsList(t *testing.T) {
 	Convey("buildAdditionalSuggestionList successfully", t, func() {
-
 		Convey("returns array of strings", func() {
 			query1 := buildAdditionalSuggestionList("test-query")
 			So(query1, ShouldHaveLength, 1)
@@ -120,49 +119,48 @@ func TestTransformSearchResponse(t *testing.T) {
 		})
 
 		Convey("Converts an example response with highlighting", func() {
-			sampleResponse, err := ioutil.ReadFile("testdata/search_example.json")
+			sampleResponse, err := os.ReadFile("testdata/search_example.json")
 			So(err, ShouldBeNil)
-			expected, err := ioutil.ReadFile("testdata/search_expected_highlighted.json")
+			expected, err := os.ReadFile("testdata/search_expected_highlighted.json")
 			So(err, ShouldBeNil)
 
 			actual, err := transformer.TransformSearchResponse(ctx, sampleResponse, "test-query", true)
 			So(err, ShouldBeNil)
 			So(actual, ShouldNotBeEmpty)
-			var exp, act searchResponse
+			var exp, act SearchResponse
 			So(json.Unmarshal(expected, &exp), ShouldBeNil)
 			So(json.Unmarshal(actual, &act), ShouldBeNil)
 			So(act, ShouldResemble, exp)
 		})
 
 		Convey("Converts an example response without highlighting", func() {
-			sampleResponse, err := ioutil.ReadFile("testdata/search_example.json")
+			sampleResponse, err := os.ReadFile("testdata/search_example.json")
 			So(err, ShouldBeNil)
-			expected, err := ioutil.ReadFile("testdata/search_expected_plain.json")
+			expected, err := os.ReadFile("testdata/search_expected_plain.json")
 			So(err, ShouldBeNil)
 
 			actual, err := transformer.TransformSearchResponse(ctx, sampleResponse, "test-query", false)
 			So(err, ShouldBeNil)
 			So(actual, ShouldNotBeEmpty)
-			var exp, act searchResponse
+			var exp, act SearchResponse
 			So(json.Unmarshal(expected, &exp), ShouldBeNil)
 			So(json.Unmarshal(actual, &act), ShouldBeNil)
 			So(act, ShouldResemble, exp)
 		})
 
 		Convey("Calls buildAdditionalSuggestionsList if zero search results", func() {
-			sampleResponse, err := ioutil.ReadFile("testdata/zero_search_example.json")
+			sampleResponse, err := os.ReadFile("testdata/zero_search_example.json")
 			So(err, ShouldBeNil)
-			expected, err := ioutil.ReadFile("testdata/zero_search_expected.json")
+			expected, err := os.ReadFile("testdata/zero_search_expected.json")
 			So(err, ShouldBeNil)
 
 			actual, err := transformer.TransformSearchResponse(ctx, sampleResponse, "test query \"with quote marks\"", false)
 			So(err, ShouldBeNil)
 			So(actual, ShouldNotBeEmpty)
-			var exp, act searchResponse
+			var exp, act SearchResponse
 			So(json.Unmarshal(expected, &exp), ShouldBeNil)
 			So(json.Unmarshal(actual, &act), ShouldBeNil)
 			So(act, ShouldResemble, exp)
 		})
-
 	})
 }

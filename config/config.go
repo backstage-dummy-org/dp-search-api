@@ -22,7 +22,7 @@ type Config struct {
 
 var cfg *Config
 
-// Get configures the application and returns the configuration
+// Get configures the application and returns the Config
 func Get() (*Config, error) {
 	if cfg != nil {
 		return cfg, nil
@@ -32,11 +32,11 @@ func Get() (*Config, error) {
 		AwsRegion:                  "eu-west-1",
 		AwsService:                 "es",
 		BindAddr:                   ":23900",
+		ElasticSearchAPIURL:        "http://localhost:9200",
 		GracefulShutdownTimeout:    5 * time.Second,
+		SignElasticsearchRequests:  false,
 		HealthCheckCriticalTimeout: 90 * time.Second,
 		HealthCheckInterval:        30 * time.Second,
-		ElasticSearchAPIURL:        "http://localhost:9200",
-		SignElasticsearchRequests:  false,
 		ZebedeeURL:                 "http://localhost:8082",
 	}
 
@@ -46,6 +46,6 @@ func Get() (*Config, error) {
 // String is implemented to prevent sensitive fields being logged.
 // The config is returned as JSON with sensitive fields omitted.
 func (config Config) String() string {
-	json, _ := json.Marshal(config)
-	return string(json)
+	data, _ := json.Marshal(config)
+	return string(data)
 }
