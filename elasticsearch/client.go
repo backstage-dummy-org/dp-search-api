@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 
-	esauth "github.com/ONSdigital/dp-elasticsearch/v2/awsauth"
 	dphttp "github.com/ONSdigital/dp-net/http"
 	"github.com/pkg/errors"
 )

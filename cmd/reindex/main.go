@@ -21,7 +21,6 @@ var (
 	maxConcurrentIndexings   = 20
 
 	ctx = context.Background()
-
 )
 
 type zebedeeClient interface {
