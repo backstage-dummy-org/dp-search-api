@@ -4,6 +4,23 @@ Digital Publishing Search API
 
 A Go application microservice to provide query functionality on the ONS Website
 
+### How to run
+
+run vault
+run zebedee
+run docker-componse with checking elastic search port as 11200
+    ./dp-compose/docker-compose up or down
+
+go build
+./dp-search-api
+
+To create an empty index
+    http://localhost:23900/search
+    This will return <index_name>
+
+To get the index details
+    localhost:11200/<index_name>/_mapping?pretty
+
 ### Getting started
 
 There are now 2 versions of ElasticSearch being used by this service:
