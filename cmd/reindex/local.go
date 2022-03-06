@@ -5,9 +5,10 @@ package main
 
 import (
 	"context"
-	"github.com/ONSdigital/dp-search-api/config"
 	"log"
 	"os"
+
+	"github.com/ONSdigital/dp-search-api/config"
 )
 
 var Name = "development"
@@ -20,8 +21,15 @@ func getConfig(ctx context.Context) cliConfig {
 	}
 
 	return cliConfig{
-		zebedeeURL:   "http://localhost:8082",
+		aws: AWSConfig{
+			filename:              cfg.AWS.Filename,
+			profile:               cfg.AWS.Profile,
+			region:                cfg.AWS.Region,
+			service:               "es",
+			tlsInsecureSkipVerify: cfg.AWS.TLSInsecureSkipVerify,
+		},
 		esURL:        cfg.ElasticSearchAPIURL,
 		signRequests: cfg.SignElasticsearchRequests,
+		zebedeeURL:   "http://localhost:8082",
 	}
 }

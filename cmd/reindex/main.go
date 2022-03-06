@@ -4,20 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/ONSdigital/dp-api-clients-go/v2/zebedee"
 	dpEs "github.com/ONSdigital/dp-elasticsearch/v3"
 	dpEsClient "github.com/ONSdigital/dp-elasticsearch/v3/client"
+	"github.com/ONSdigital/dp-net/v2/awsauth"
 	dphttp2 "github.com/ONSdigital/dp-net/v2/http"
 	"github.com/ONSdigital/dp-search-api/elasticsearch"
 	extractorModels "github.com/ONSdigital/dp-search-data-extractor/models"
 	importerModels "github.com/ONSdigital/dp-search-data-importer/models"
 	"github.com/ONSdigital/dp-search-data-importer/transform"
 	es7 "github.com/elastic/go-elasticsearch/v7"
-	"log"
-	"net/url"
-	"strings"
-	"sync"
-	"time"
 )
 
 var (
@@ -26,9 +28,18 @@ var (
 )
 
 type cliConfig struct {
+	aws          AWSConfig
 	zebedeeURL   string
 	esURL        string
 	signRequests bool
+}
+
+type AWSConfig struct {
+	filename              string
+	profile               string
+	region                string
+	service               string
+	tlsInsecureSkipVerify bool
 }
 
 type zebedeeClient interface {
@@ -66,16 +77,18 @@ func main() {
 	esHttpClient := hcClienter
 	if cfg.signRequests {
 		fmt.Println("Use a signing roundtripper client")
-		signingHttpClient, err := dphttp2.NewClientWithAwsSigner("", "", "eu-west-1", "es")
+		awsSignerRT, err := awsauth.NewAWSSignerRoundTripper(cfg.aws.filename, cfg.aws.filename, cfg.aws.region, cfg.aws.service,
+			awsauth.Options{TlsInsecureSkipVerify: cfg.aws.tlsInsecureSkipVerify})
 		if err != nil {
 			log.Fatal(ctx, "Failed to create http signer", err)
 		}
-		esHttpClient = signingHttpClient
+
+		esHttpClient = dphttp2.NewClientWithTransport(awsSignerRT)
 	}
 
 	officialEsClient := getElasticSearchClient(ctx, cfg, esHttpClient)
 	dpEsClient, err := dpEs.NewClient(dpEsClient.Config{
-		ClientLib: dpEsClient.GoElastic_V710,
+		ClientLib: dpEsClient.GoElasticV710,
 		Address:   cfg.esURL,
 		Transport: esHttpClient,
 	})
@@ -112,24 +125,24 @@ func uriProducer(ctx context.Context, z zebedeeClient, limit int) chan string {
 	return uriChan
 }
 
-func fakeUriProducer() chan string {
-	uriChan := make(chan string)
-	go func() {
-		defer close(uriChan)
+// func fakeUriProducer() chan string {
+// 	uriChan := make(chan string)
+// 	go func() {
+// 		defer close(uriChan)
 
-		urisToIndex := []string{
-			"/peoplepopulationandcommunity/housing/articles/housepricestatisticsforsmallareasinenglandandwales/2015-02-17",
-		}
+// 		urisToIndex := []string{
+// 			"/peoplepopulationandcommunity/housing/articles/housepricestatisticsforsmallareasinenglandandwales/2015-02-17",
+// 		}
 
-		for _, uri := range urisToIndex {
-			for i := 0; i < 1; i++ {
-				uriChan <- uri
-			}
-		}
-		fmt.Println("Finished listing uris")
-	}()
-	return uriChan
-}
+// 		for _, uri := range urisToIndex {
+// 			for i := 0; i < 1; i++ {
+// 				uriChan <- uri
+// 			}
+// 		}
+// 		fmt.Println("Finished listing uris")
+// 	}()
+// 	return uriChan
+// }
 
 func getPublishedURIs(ctx context.Context, z zebedeeClient) []zebedee.PublishedIndexItem {
 	index, err := z.GetPublishedIndex(ctx, &zebedee.PublishedIndexRequestParams{})
@@ -311,9 +324,7 @@ type indexDetails struct {
 }
 
 func cleanOldIndices(ctx context.Context, es *es7.Client, dpEsClient dpEsClient.Client) {
-	err := dpEsClient.
-
-	res, err := es.Indices.GetAlias()
+	res, err := es.Indices.GetAlias() // Create this method via dp-elasticsearch v3 lib
 	if err != nil {
 		log.Fatalf("Error: Indices.GetAlias: %s", res)
 	}
@@ -329,7 +340,8 @@ func cleanOldIndices(ctx context.Context, es *es7.Client, dpEsClient dpEsClient.
 			toDelete = append(toDelete, index)
 		}
 	}
-	deleteIndicies(ctx, es, toDelete)
+
+	deleteIndicies(ctx, dpEsClient, toDelete)
 }
 
 func doesIndexHaveAlias(details indexDetails, alias string) bool {
@@ -341,10 +353,11 @@ func doesIndexHaveAlias(details indexDetails, alias string) bool {
 	return false
 }
 
-func deleteIndicies(ctx context.Context, es *es7.Client, indicies []string) {
-	res, err := es.Indices.Delete(indicies)
-	if err != nil {
-		log.Fatalf("Error: Indices.GetAlias: %s", res)
+func deleteIndicies(ctx context.Context, es dpEsClient.Client, indicies []string) {
+
+	if err := es.DeleteIndices(ctx, indicies); err != nil {
+		log.Fatalf("Error: Indices.GetAlias: %s", err)
 	}
+
 	fmt.Printf("Deleted Indicies: %s\n", strings.Join(indicies, ","))
 }
