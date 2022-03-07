@@ -19,7 +19,6 @@ import (
 	extractorModels "github.com/ONSdigital/dp-search-data-extractor/models"
 	importerModels "github.com/ONSdigital/dp-search-data-importer/models"
 	"github.com/ONSdigital/dp-search-data-importer/transform"
-	es7 "github.com/elastic/go-elasticsearch/v7"
 )
 
 var (
@@ -52,17 +51,6 @@ type Document struct {
 	Body []byte
 }
 
-func getElasticSearchClient(ctx context.Context, cliCfg cliConfig, httpClient dphttp2.Clienter) *es7.Client {
-	es7Cli, err := es7.NewClient(es7.Config{
-		Addresses: []string{cliCfg.esURL},
-		Transport: httpClient,
-	})
-	if err != nil {
-		log.Fatal(ctx, "failed to create official ES client", err)
-	}
-	return es7Cli
-}
-
 func main() {
 	fmt.Printf("Hola %s!\n", Name)
 
@@ -86,7 +74,6 @@ func main() {
 		esHttpClient = dphttp2.NewClientWithTransport(awsSignerRT)
 	}
 
-	officialEsClient := getElasticSearchClient(ctx, cfg, esHttpClient)
 	dpEsClient, err := dpEs.NewClient(dpEsClient.Config{
 		ClientLib: dpEsClient.GoElasticV710,
 		Address:   cfg.esURL,
@@ -105,7 +92,7 @@ func main() {
 	summarize(indexedChan, extractionFailuresChan)
 
 	if promptUserToCleanIndices() {
-		cleanOldIndices(ctx, officialEsClient, dpEsClient)
+		cleanOldIndices(ctx, dpEsClient)
 	}
 }
 
@@ -314,6 +301,7 @@ func summarize(indexedChan chan bool, extractionFailuresChan chan string) {
 
 func promptUserToCleanIndices() bool {
 	//TODO prompt
+
 	return true
 }
 
@@ -323,14 +311,15 @@ type indexDetails struct {
 	Aliases map[string]interface{} `json:"aliases"`
 }
 
-func cleanOldIndices(ctx context.Context, es *es7.Client, dpEsClient dpEsClient.Client) {
-	res, err := es.Indices.GetAlias() // Create this method via dp-elasticsearch v3 lib
+func cleanOldIndices(ctx context.Context, dpEsClient dpEsClient.Client) {
+	body, err := dpEsClient.GetAlias(ctx) // Create this method via dp-elasticsearch v3 lib
 	if err != nil {
-		log.Fatalf("Error: Indices.GetAlias: %s", res)
+		log.Fatalf("Error: Indices.GetAlias: %s", err)
 	}
+
 	//fmt.Printf("GetAliasResponse:%v\n", res)
 	var r aliasResponse
-	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+	if err := json.Unmarshal(body, &r); err != nil {
 		log.Fatalf("Error parsing the response body: %s", err)
 	}
 
@@ -353,9 +342,9 @@ func doesIndexHaveAlias(details indexDetails, alias string) bool {
 	return false
 }
 
-func deleteIndicies(ctx context.Context, es dpEsClient.Client, indicies []string) {
+func deleteIndicies(ctx context.Context, dpEsClient dpEsClient.Client, indicies []string) {
 
-	if err := es.DeleteIndices(ctx, indicies); err != nil {
+	if err := dpEsClient.DeleteIndices(ctx, indicies); err != nil {
 		log.Fatalf("Error: Indices.GetAlias: %s", err)
 	}
 
