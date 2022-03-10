@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 
+	legacyESClient "github.com/ONSdigital/dp-elasticsearch/v3/client/elasticsearch/v2"
+	"github.com/ONSdigital/dp-net/v2/awsauth"
+	dphttp "github.com/ONSdigital/dp-net/v2/http"
 	"github.com/ONSdigital/dp-search-api/api"
 	"github.com/ONSdigital/dp-search-api/config"
 	"github.com/ONSdigital/dp-search-api/elasticsearch"
@@ -11,10 +14,6 @@ import (
 	"github.com/ONSdigital/log.go/v2/log"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
-
-	dpelastic "github.com/ONSdigital/dp-elasticsearch/v3/elasticsearch"
-	"github.com/ONSdigital/dp-net/v2/awsauth"
-	dphttp "github.com/ONSdigital/dp-net/v2/http"
 )
 
 const pathToTemplates = ""
@@ -76,7 +75,7 @@ func Run(ctx context.Context, cfg *config.Config, serviceList *ExternalServiceLi
 		elasticHTTPClient = dphttp.NewClientWithTransport(awsSignerRT)
 	}
 
-	dpESClient := dpelastic.NewClientWithHTTPClient(cfg.ElasticSearchAPIURL, elasticHTTPClient)
+	dpESClient := legacyESClient.NewClientWithHTTPClient(cfg.ElasticSearchAPIURL, elasticHTTPClient)
 
 	// Initialise deprecatedESClient
 	deprecatedESClient := elasticsearch.New(cfg.ElasticSearchAPIURL, elasticHTTPClient, cfg.AWS.Region, cfg.AWS.Service)
@@ -180,8 +179,8 @@ func (svc *Service) Close(ctx context.Context) error {
 	return nil
 }
 
-func registerCheckers(ctx context.Context, hc HealthChecker, dpESClient *dpelastic.Client) (err error) {
-	if err = hc.AddCheck("Elasticsearch", dpESClient.Checker); err != nil {
+func registerCheckers(ctx context.Context, hc HealthChecker, lesCli *legacyESClient.Client) (err error) {
+	if err = hc.AddCheck("Elasticsearch", lesCli.Checker); err != nil {
 		log.Error(ctx, "error creating elasticsearch health check", err)
 		err = errors.New("Error(s) registering checkers for health check")
 	}

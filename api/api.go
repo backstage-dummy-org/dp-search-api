@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/ONSdigital/dp-authorisation/auth"
-	dpelastic "github.com/ONSdigital/dp-elasticsearch/v3/elasticsearch"
+	dpelastic "github.com/ONSdigital/dp-elasticsearch/v3/client"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 )
@@ -20,7 +20,7 @@ var (
 type SearchAPI struct {
 	Router             *mux.Router
 	QueryBuilder       QueryBuilder
-	dpESClient         *dpelastic.Client
+	dpESClient         dpelastic.Client
 	deprecatedESClient ElasticSearcher
 	Transformer        ResponseTransformer
 	permissions        AuthHandler
@@ -49,7 +49,7 @@ type ResponseTransformer interface {
 }
 
 // NewSearchAPI returns a new Search API struct after registering the routes
-func NewSearchAPI(router *mux.Router, dpESClient *dpelastic.Client, deprecatedESClient ElasticSearcher, queryBuilder QueryBuilder, transformer ResponseTransformer, permissions AuthHandler) (*SearchAPI, error) {
+func NewSearchAPI(router *mux.Router, dpESClient dpelastic.Client, deprecatedESClient ElasticSearcher, queryBuilder QueryBuilder, transformer ResponseTransformer, permissions AuthHandler) (*SearchAPI, error) {
 	errData := SetupData()
 	if errData != nil {
 		return nil, errors.Wrap(errData, "Failed to setup data templates")

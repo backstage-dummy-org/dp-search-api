@@ -10,7 +10,7 @@ var Name = "aws"
 func getConfig(ctx context.Context) cliConfig {
 	return cliConfig{
 		zebedeeURL:   "http://localhost:10050",
-		esURL:        "https://blah-blah-blah.eu-west-1.es.amazonaws.com",
+		esURL:        "https://vpc-develop-site-54e7wtwq3uhfsardcmb5umiyrm.eu-west-1.es.amazonaws.com",
 		signRequests: true,
 	}
 }

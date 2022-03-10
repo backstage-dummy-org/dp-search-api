@@ -1,21 +1,20 @@
 module github.com/ONSdigital/dp-search-api
 
-replace github.com/ONSdigital/dp-elasticsearch/v3 => ./../dp-elasticsearch
-
 go 1.17
+
+replace github.com/ONSdigital/dp-elasticsearch/v3 => /Users/rahulmadathumpalliyalil/workdir/ONSdigital/dp-elasticsearch
 
 require (
 	github.com/ONSdigital/dp-api-clients-go/v2 v2.92.5
 	github.com/ONSdigital/dp-authorisation v0.2.0
 	github.com/ONSdigital/dp-component-test v0.6.5
-	github.com/ONSdigital/dp-elasticsearch/v3 v3.0.0-00010101000000-000000000000
+	github.com/ONSdigital/dp-elasticsearch/v3 v3.0.0-alpha.2
 	github.com/ONSdigital/dp-healthcheck v1.3.0
 	github.com/ONSdigital/dp-net/v2 v2.0.0
 	github.com/ONSdigital/dp-search-data-extractor v0.8.0
 	github.com/ONSdigital/dp-search-data-importer v0.5.0
 	github.com/ONSdigital/log.go/v2 v2.1.0
 	github.com/cucumber/godog v0.12.4
-	github.com/elastic/go-elasticsearch/v7 v7.17.0
 	github.com/google/go-cmp v0.5.7
 	github.com/gorilla/mux v1.8.0
 	github.com/kelseyhightower/envconfig v1.4.0
@@ -38,6 +37,7 @@ require (
 	github.com/cucumber/gherkin-go/v19 v19.0.3 // indirect
 	github.com/cucumber/messages-go/v16 v16.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/elastic/go-elasticsearch/v7 v7.10.0 // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
