@@ -4,6 +4,8 @@ metadata:
   title: "DP Search API"
   name: "dp-search-api"
   description: "Digital Publishing's API for search functionality"
+  tags:
+    - go
   annotations:
     github.com/project-slug: backstage-dummy-org/dp-search-api
     backstage.io/techdocs-ref: dir:.
