@@ -11,3 +11,4 @@ spec:
   type: service
   lifecycle: production
   owner: "digital-publishing"
+  system: ons-website
