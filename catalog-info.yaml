@@ -14,3 +14,5 @@ spec:
   lifecycle: production
   owner: "digital-publishing"
   system: ons-website
+  providesApis:
+    - dp-search-api
