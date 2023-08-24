@@ -9,6 +9,10 @@ metadata:
   annotations:
     github.com/project-slug: backstage-dummy-org/dp-search-api
     backstage.io/techdocs-ref: dir:.
+  links:
+  - title: ONS Website
+    url: https://www.ons.gov.uk/
+    icon: dashboard
 spec:
   type: service
   lifecycle: production
