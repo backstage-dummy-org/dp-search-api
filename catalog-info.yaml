@@ -8,7 +8,7 @@ metadata:
     - go
   annotations:
     github.com/project-slug: backstage-dummy-org/dp-search-api
-    backstage.io/techdocs-ref: dir:.
+    # backstage.io/techdocs-ref: dir:.
   links:
   - title: ONS Website
     url: https://www.ons.gov.uk/
